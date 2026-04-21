@@ -2,11 +2,12 @@
 
 A Flask web app that connects to your Gmail account and analyses your inbox by sender — showing message counts, total size, and flagging likely marketing/spam. Staged senders can be moved to a Gmail label for bulk deletion.
 
-> [!WARNING]
-> This tool is largely generated using AI. It is very likely it will result in data loss if you don't know what you're doing.
-> I recommend that no one uses this tool.
-> I accept no responsibility for data loss.
-> You have been warned.
+<strong><span style="color:red">
+⚠ This tool is largely generated using AI. It is very likely it will result in data loss if you don't know what you're doing.<br>
+I recommend that no one uses this tool.<br>
+I accept no responsibility for data loss.<br>
+You have been warned.
+</span></strong>
 
 ## Features
 
