@@ -1,0 +1,15 @@
+# virtualenv
+venv/
+
+# credentials & auth tokens
+credentials.json
+token.pickle
+
+# generated report output
+sender_report.json
+sender_report.csv
+sender_report.json.tmp
+
+# python
+__pycache__/
+*.pyc

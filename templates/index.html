@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gmail Sender Analysis</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #f4f6f9;
+    color: #1a1a2e;
+    min-height: 100vh;
+  }
+
+  header {
+    background: #1a73e8;
+    color: white;
+    padding: 1rem 2rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  }
+  header h1 { font-size: 1.3rem; font-weight: 600; flex: 1; }
+
+  .btn {
+    padding: 0.5rem 1.2rem;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 500;
+    transition: opacity 0.15s;
+  }
+  .btn:hover { opacity: 0.85; }
+  .btn-primary { background: white; color: #1a73e8; }
+  .btn-sm { padding: 0.3rem 0.8rem; font-size: 0.8rem; }
+  .btn-outline { background: transparent; border: 1px solid #ccc; color: #555; }
+
+  .container { max-width: 1400px; margin: 0 auto; padding: 1.5rem 2rem; }
+
+  .stats {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+  }
+  .stat-card {
+    background: white;
+    border-radius: 8px;
+    padding: 1rem 1.5rem;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    min-width: 150px;
+  }
+  .stat-card .label { font-size: 0.75rem; color: #666; text-transform: uppercase; letter-spacing: 0.05em; }
+  .stat-card .value { font-size: 1.6rem; font-weight: 700; color: #1a73e8; margin-top: 0.2rem; }
+
+  .toolbar {
+    display: flex;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .search-box {
+    flex: 1;
+    min-width: 200px;
+    padding: 0.5rem 0.9rem;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .search-box:focus { border-color: #1a73e8; }
+
+  label.toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.85rem;
+    color: #555;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .table-wrap {
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    overflow: auto;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+  }
+
+  thead th {
+    background: #f8f9fa;
+    padding: 0.75rem 1rem;
+    text-align: left;
+    font-weight: 600;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #555;
+    border-bottom: 2px solid #e8eaed;
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+    position: sticky;
+    top: 0;
+  }
+  thead th:hover { background: #eef2f8; color: #1a73e8; }
+  thead th.sort-asc::after  { content: " ▲"; color: #1a73e8; }
+  thead th.sort-desc::after { content: " ▼"; color: #1a73e8; }
+  thead th.sort-asc, thead th.sort-desc { color: #1a73e8; }
+
+  tbody tr { border-bottom: 1px solid #f0f0f0; transition: background 0.1s; }
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:hover { background: #f8fbff; }
+  tbody tr.flagged { background: #fff8f0; }
+  tbody tr.flagged:hover { background: #fff3e5; }
+
+  td { padding: 0.6rem 1rem; vertical-align: middle; }
+  td.rank { color: #999; width: 60px; text-align: right; }
+  td.email { font-family: monospace; font-size: 0.82rem; max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  td.name { color: #444; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  td.count { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+  td.size  { text-align: right; font-variant-numeric: tabular-nums; color: #555; white-space: nowrap; }
+  td.flag  { text-align: center; }
+
+  .badge {
+    display: inline-block;
+    padding: 0.15rem 0.55rem;
+    border-radius: 999px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+  }
+  .badge-spam { background: #fde8cc; color: #b45309; }
+  .badge-ok   { background: #e8f5e9; color: #2e7d32; }
+
+  .progress-bar-wrap {
+    background: #e8eaed;
+    border-radius: 999px;
+    height: 8px;
+    overflow: hidden;
+    margin-top: 0.4rem;
+  }
+  .progress-bar { height: 100%; background: #e53935; transition: width 0.3s; border-radius: 999px; }
+
+  #fetch-status {
+    background: #1a73e8;
+    color: white;
+    padding: 1rem 2rem;
+    display: none;
+    align-items: center;
+    gap: 1rem;
+  }
+  #fetch-status.visible { display: flex; }
+  #fetch-status .msg { flex: 1; font-size: 0.9rem; }
+  #fetch-status .progress-bar { background: rgba(255,255,255,0.9); }
+
+  .empty {
+    text-align: center;
+    padding: 4rem 2rem;
+    color: #888;
+  }
+  .empty p { margin-top: 0.5rem; font-size: 0.9rem; }
+
+  #row-count { font-size: 0.85rem; color: #888; white-space: nowrap; }
+
+  /* Delete button */
+  .btn-delete {
+    padding: 0.25rem 0.6rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border-radius: 5px;
+    border: 1px solid;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .btn-delete.enabled  { background: #fff3e0; color: #e65100; border-color: #ffb74d; }
+  .btn-delete.enabled:hover { background: #ffe0b2; }
+  .btn-delete.disabled { background: #f5f5f5; color: #bbb; border-color: #e0e0e0; cursor: not-allowed; }
+  .btn-delete.staged { background: #e8f5e9; color: #2e7d32; border-color: #a5d6a7; cursor: default; }
+
+  /* Modal */
+  .modal-backdrop {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.45);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+  }
+  .modal-backdrop.open { display: flex; }
+  .modal {
+    background: white;
+    border-radius: 10px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+    width: 680px;
+    max-width: 95vw;
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+  }
+  .modal-header {
+    padding: 1.2rem 1.5rem;
+    border-bottom: 1px solid #eee;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+  .modal-header h2 { font-size: 1rem; font-weight: 600; flex: 1; }
+  .modal-close { background: none; border: none; font-size: 1.4rem; cursor: pointer; color: #888; line-height: 1; }
+  .modal-close:hover { color: #333; }
+  .modal-body { padding: 1.5rem; overflow-y: auto; flex: 1; }
+  .dry-run-label {
+    display: inline-block;
+    background: #fff3cd;
+    color: #856404;
+    border: 1px solid #ffc107;
+    border-radius: 4px;
+    padding: 0.2rem 0.6rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    margin-bottom: 1rem;
+  }
+  .modal-section { margin-bottom: 1.25rem; }
+  .modal-section label { display: block; font-size: 0.75rem; font-weight: 600; color: #888; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.4rem; }
+  .code-block {
+    background: #1e1e2e;
+    color: #cdd6f4;
+    border-radius: 6px;
+    padding: 0.9rem 1rem;
+    font-family: monospace;
+    font-size: 0.82rem;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+  .code-block .comment { color: #6c7086; }
+  .code-block .keyword { color: #89b4fa; }
+  .code-block .string  { color: #a6e3a1; }
+  .id-list {
+    background: #f8f9fa;
+    border: 1px solid #e8eaed;
+    border-radius: 6px;
+    padding: 0.75rem 1rem;
+    font-family: monospace;
+    font-size: 0.78rem;
+    max-height: 200px;
+    overflow-y: auto;
+    color: #444;
+    line-height: 1.8;
+  }
+  .modal-spinner { text-align: center; padding: 2rem; color: #888; font-size: 0.9rem; }
+  .modal-error { color: #c62828; background: #fdecea; border-radius: 6px; padding: 0.75rem 1rem; font-size: 0.85rem; }
+  .modal-success { color: #1b5e20; background: #e8f5e9; border: 1px solid #a5d6a7; border-radius: 6px; padding: 1rem 1.25rem; font-size: 0.9rem; }
+  .modal-success strong { display: block; font-size: 1rem; margin-bottom: 0.25rem; }
+  .confirm-bar { display: flex; gap: 0.75rem; align-items: center; margin-top: 1.25rem; }
+  .btn-confirm { padding: 0.55rem 1.2rem; background: #e65100; color: white; border: none; border-radius: 6px; font-size: 0.9rem; font-weight: 600; cursor: pointer; }
+  .btn-confirm:hover { background: #bf360c; }
+  .btn-confirm:disabled { background: #bbb; cursor: not-allowed; }
+  .btn-cancel { padding: 0.55rem 1rem; background: none; border: 1px solid #ccc; border-radius: 6px; font-size: 0.9rem; color: #555; cursor: pointer; }
+  .btn-cancel:hover { background: #f5f5f5; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>📧 Gmail Sender Analysis</h1>
+  <form method="post" action="/fetch" id="fetch-form" style="display:inline">
+    <button class="btn btn-primary" type="submit" id="fetch-btn">
+      {% if state.running %}Fetching…{% else %}{% if senders %}Refresh{% else %}Fetch Emails{% endif %}{% endif %}
+    </button>
+  </form>
+  <form method="post" action="/clear" id="clear-form" style="display:inline" onsubmit="return confirm('Delete all saved data and start from scratch?')">
+    <button class="btn" type="submit" style="background:rgba(255,255,255,0.15); color:white; border:1px solid rgba(255,255,255,0.4)" {% if state.running %}disabled title="Cannot clear while fetching"{% endif %}>
+      Clear Data
+    </button>
+  </form>
+</header>
+
+<div id="fetch-status" {% if state.running %}class="visible"{% endif %}>
+  <div class="msg" id="status-msg">Fetching emails…</div>
+  <div style="width:200px">
+    <div class="progress-bar-wrap">
+      <div class="progress-bar" id="progress-bar" style="width:0%"></div>
+    </div>
+  </div>
+</div>
+
+<div class="container">
+
+  {% if partial and not state.running %}
+  <div style="background:#fff8e1; border:1px solid #ffe082; border-radius:8px; padding:0.75rem 1.25rem; margin-bottom:1rem; font-size:0.875rem; color:#5d4037">
+    ⚠ This is a partial snapshot from an interrupted fetch. Click <strong>Refresh</strong> to resume from scratch, or continue using this data.
+  </div>
+  {% endif %}
+  {% if senders %}
+  {% set flagged = senders | selectattr("flagged") | list %}
+  <div class="stats">
+    <div class="stat-card">
+      <div class="label">Senders</div>
+      <div class="value">{{ senders | length }}</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Messages</div>
+      <div class="value">{{ senders | sum(attribute="count") }}</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Total Size</div>
+      <div class="value" style="font-size:1.2rem; padding-top:0.3rem">{{ total_size_human }}</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Flagged</div>
+      <div class="value" style="color:#b45309">{{ flagged | length }}</div>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <input class="search-box" type="search" id="search" placeholder="Search email or name…">
+    <label class="toggle">
+      <input type="checkbox" id="flagged-only"> Show flagged only
+    </label>
+    <span id="row-count"></span>
+    <a href="/api/data" class="btn btn-sm btn-outline" download="sender_report.json">⬇ JSON</a>
+  </div>
+
+  <div class="table-wrap">
+    <table id="main-table">
+      <thead>
+        <tr>
+          <th style="width:90px; cursor:default"></th>
+          <th data-col="rank"  data-type="num">#</th>
+          <th data-col="name"  data-type="str">Name</th>
+          <th data-col="email" data-type="str">Email</th>
+          <th data-col="count" data-type="num" class="sort-desc">Messages</th>
+          <th data-col="size_bytes" data-type="num">Size</th>
+          <th data-col="flagged" data-type="bool">Flag</th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+
+  <!-- Dry-run modal -->
+  <div class="modal-backdrop" id="modal-backdrop">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 id="modal-title">Dry Run: Delete emails</h2>
+        <button class="modal-close" id="modal-close">×</button>
+      </div>
+      <div class="modal-body" id="modal-body">
+        <div class="modal-spinner">Looking up messages…</div>
+      </div>
+    </div>
+  </div>
+  {% else %}
+  <div class="empty">
+    <div style="font-size:3rem">📭</div>
+    <p>No data yet. Click <strong>Fetch Emails</strong> to connect to Gmail and analyse your inbox.</p>
+  </div>
+  {% endif %}
+
+</div>
+
+<script>
+const RAW = {{ senders | tojson }};
+
+// Add rank
+RAW.forEach((r, i) => r.rank = i + 1);
+
+let sortCol = "count";
+let sortDir = -1; // -1 = desc, 1 = asc
+let filterText = "";
+let flaggedOnly = false;
+
+const tbody = document.getElementById("tbody");
+const rowCount = document.getElementById("row-count");
+
+function fmtSize(bytes) {
+  if (bytes >= 1e9) return (bytes / 1e9).toFixed(1) + " GB";
+  if (bytes >= 1e6) return (bytes / 1e6).toFixed(1) + " MB";
+  if (bytes >= 1e3) return (bytes / 1e3).toFixed(1) + " KB";
+  return bytes + " B";
+}
+
+function getValue(row, col) {
+  if (col === "size_bytes") return row.size_bytes;
+  if (col === "flagged") return row.flagged ? 1 : 0;
+  return row[col];
+}
+
+function render() {
+  const q = filterText.toLowerCase();
+  let rows = RAW.filter(r => {
+    if (flaggedOnly && !r.flagged) return false;
+    if (q && !r.email.toLowerCase().includes(q) && !r.name.toLowerCase().includes(q)) return false;
+    return true;
+  });
+
+  const type = document.querySelector(`th[data-col="${sortCol}"]`)?.dataset.type || "num";
+  rows.sort((a, b) => {
+    const av = getValue(a, sortCol), bv = getValue(b, sortCol);
+    if (type === "num" || type === "bool") return sortDir * (bv - av);
+    return sortDir * String(av).localeCompare(String(bv));
+  });
+
+  tbody.innerHTML = rows.map(r => `
+    <tr class="${r.flagged ? "flagged" : ""}">
+      <td>
+        <button
+          class="btn-delete enabled"
+          onclick="openStageModal('${r.email.replace(/'/g, "\\'")}')"
+          title="Move emails to 'mark for deletion' label"
+          id="stage-btn-${r.rank}"
+        >📁 Stage</button>
+      </td>
+      <td class="rank">${r.rank}</td>
+      <td class="name" title="${r.name}">${r.name || "—"}</td>
+      <td class="email" title="${r.email}">${r.email}</td>
+      <td class="count">${r.count.toLocaleString()}</td>
+      <td class="size">${fmtSize(r.size_bytes)}</td>
+      <td class="flag">
+        <span class="badge ${r.flagged ? "badge-spam" : "badge-ok"}">
+          ${r.flagged ? "Marketing" : "OK"}
+        </span>
+      </td>
+    </tr>`).join("");
+
+  rowCount.textContent = `${rows.length} of ${RAW.length} senders`;
+}
+
+// Modal logic
+const backdrop = document.getElementById("modal-backdrop");
+const modalTitle = document.getElementById("modal-title");
+const modalBody = document.getElementById("modal-body");
+document.getElementById("modal-close").addEventListener("click", () => backdrop.classList.remove("open"));
+backdrop.addEventListener("click", e => { if (e.target === backdrop) backdrop.classList.remove("open"); });
+
+function openStageModal(email) {
+  modalTitle.textContent = `Stage emails from ${email}`;
+  modalBody.innerHTML = `<div class="modal-spinner">Looking up messages…</div>`;
+  backdrop.classList.add("open");
+
+  fetch(`/api/dry-run?email=${encodeURIComponent(email)}`)
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) {
+        modalBody.innerHTML = `<div class="modal-error">Error: ${data.error || "(no detail returned)"}</div>`;
+        return;
+      }
+      const count = data.count;
+      const ids = data.message_ids;
+      const preview = ids.slice(0, 100).join("\n");
+      const overflow = ids.length > 100 ? `\n… and ${ids.length - 100} more` : "";
+
+      modalBody.innerHTML = `
+        <div class="modal-section">
+          <p style="font-size:0.95rem; line-height:1.6">
+            <strong>${count.toLocaleString()} email${count !== 1 ? "s" : ""}</strong> from
+            <code style="background:#f1f3f4; padding:0.1rem 0.4rem; border-radius:4px">${email}</code>
+            will be moved to the <strong>mark for deletion</strong> label and removed from your inbox.
+            You can then review and permanently delete them from Gmail.
+          </p>
+        </div>
+
+        <div class="modal-section">
+          <label>${count} message ID${count !== 1 ? "s" : ""}</label>
+          <div class="id-list">${preview}${overflow}</div>
+        </div>
+
+        <div class="confirm-bar">
+          <button class="btn-confirm" id="confirm-stage-btn" onclick="executeStage('${email.replace(/'/g, "\\'")}', ${count})">
+            Move ${count.toLocaleString()} email${count !== 1 ? "s" : ""} to mark for deletion
+          </button>
+          <button class="btn-cancel" onclick="document.getElementById('modal-backdrop').classList.remove('open')">Cancel</button>
+        </div>`;
+    })
+    .catch(err => {
+      modalBody.innerHTML = `<div class="modal-error">Request failed: ${err}</div>`;
+    });
+}
+
+function executeStage(email, count) {
+  const btn = document.getElementById("confirm-stage-btn");
+  btn.disabled = true;
+  btn.textContent = "Moving emails…";
+
+  fetch("/api/stage-for-deletion", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({email}),
+  })
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) {
+        modalBody.innerHTML = `<div class="modal-error">Error: ${data.error || "(no detail returned)"}</div>`;
+        return;
+      }
+      modalBody.innerHTML = `
+        <div class="modal-success">
+          <strong>✓ Done — ${data.moved.toLocaleString()} email${data.moved !== 1 ? "s" : ""} staged</strong>
+          Emails from <code>${email}</code> have been moved to the
+          <strong>mark for deletion</strong> label and removed from your inbox.
+          Open Gmail, find the <em>mark for deletion</em> label, and delete them from there.
+        </div>`;
+
+      const idx = RAW.findIndex(r => r.email === email);
+      if (idx !== -1) RAW.splice(idx, 1);
+      render();
+      setTimeout(() => backdrop.classList.remove("open"), 1500);
+    })
+    .catch(err => {
+      modalBody.innerHTML = `<div class="modal-error">Request failed: ${err}</div>`;
+    });
+}
+
+// Header click to sort
+document.querySelectorAll("thead th[data-col]").forEach(th => {
+  th.addEventListener("click", () => {
+    const col = th.dataset.col;
+    if (sortCol === col) {
+      sortDir *= -1;
+    } else {
+      sortCol = col;
+      sortDir = th.dataset.type === "str" ? 1 : -1;
+    }
+    document.querySelectorAll("thead th").forEach(t => t.classList.remove("sort-asc", "sort-desc"));
+    th.classList.add(sortDir === -1 ? "sort-desc" : "sort-asc");
+    render();
+  });
+});
+
+document.getElementById("search")?.addEventListener("input", e => {
+  filterText = e.target.value;
+  render();
+});
+document.getElementById("flagged-only")?.addEventListener("change", e => {
+  flaggedOnly = e.target.checked;
+  render();
+});
+
+if (RAW.length) render();
+
+// Live polling while fetch is running
+{% if state.running %}
+const statusBar = document.getElementById("fetch-status");
+const statusMsg = document.getElementById("status-msg");
+const progressBar = document.getElementById("progress-bar");
+const fetchBtn = document.getElementById("fetch-btn");
+
+statusBar.classList.add("visible");
+fetchBtn.disabled = true;
+
+const target = {{ state.target }};
+
+function updateData(senders) {
+  senders.forEach((r, i) => r.rank = i + 1);
+  RAW.length = 0;
+  RAW.push(...senders);
+  render();
+}
+
+function poll() {
+  Promise.all([
+    fetch("/api/status").then(r => r.json()),
+    fetch("/api/data").then(r => r.json()),
+  ]).then(([status, data]) => {
+    progressBar.style.width = "100%";
+    statusMsg.textContent = `Fetching… ${status.fetched.toLocaleString()} messages processed — ${data.senders.length.toLocaleString()} unique senders so far`;
+
+    if (data.senders.length) updateData(data.senders);
+
+    if (status.running) {
+      setTimeout(poll, 2000);
+    } else {
+      statusBar.classList.remove("visible");
+      fetchBtn.disabled = false;
+      fetchBtn.textContent = "Refresh";
+      fetch("/api/data").then(r => r.json()).then(d => updateData(d.senders));
+    }
+  }).catch(() => setTimeout(poll, 3000));
+}
+poll();
+{% endif %}
+</script>
+</body>
+</html>
